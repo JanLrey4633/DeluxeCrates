@@ -1,0 +1,14 @@
+settings:
+  prefix: '<dark_purple>[<light_purple>DeluxeCrates</light_purple>]</dark_purple> '
+  brand: 'DELUXECLANS BY SAMU_MRR'
+discord:
+  enabled: false
+  webhook-url: 'PASTE_WEBHOOK_URL_HERE'
+  username: 'DELUXECLANS | Kisten'
+  message: |-
+    **DELUXECLANS BY SAMU_MRR**
+    Spieler: {player}
+    Kiste: {crate}
+    Gewinn: {prize}
+    Zeit: {time}
+    Datum: {date}
