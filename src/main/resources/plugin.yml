@@ -8,7 +8,7 @@ commands:
   deluxecrates:
     description: DeluxeCrates administration
     usage: /dc help
-    aliases: [dc]
+    aliases: [dc, deluxecrate]
     permission: deluxecrates.admin
 permissions:
   deluxecrates.admin:
