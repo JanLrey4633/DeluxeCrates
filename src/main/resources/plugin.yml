@@ -1,0 +1,15 @@
+name: DeluxeCrates
+version: 1.0.0
+main: de.deluxeclans.deluxecrates.DeluxeCrates
+api-version: '1.21'
+author: SAMU_MRR
+description: Custom crate system with CrazyCrates importer and Discord webhook.
+commands:
+  deluxecrates:
+    description: DeluxeCrates administration
+    usage: /dc help
+    aliases: [dc]
+    permission: deluxecrates.admin
+permissions:
+  deluxecrates.admin:
+    default: op
