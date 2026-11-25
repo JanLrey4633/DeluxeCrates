@@ -80,7 +80,34 @@ public final class DeluxeCrates extends JavaPlugin implements Listener, TabCompl
     @EventHandler public void onClick(InventoryClickEvent e){if(!(e.getWhoClicked() instanceof Player p))return;String view=views.get(p.getUniqueId());if(view==null)return;e.setCancelled(true);if(e.getClickedInventory()==null||e.getClickedInventory()!=e.getView().getTopInventory())return;if(view.equals("main")&&e.getRawSlot()==45){openMain(p,Math.max(0,pages.getOrDefault(p.getUniqueId(),0)-1));return;}if(view.equals("main")&&e.getRawSlot()==53){openMain(p,pages.getOrDefault(p.getUniqueId(),0)+1);return;}ItemStack it=e.getCurrentItem();if(it==null||!it.hasItemMeta())return;String id=it.getItemMeta().getPersistentDataContainer().get(crateKey,PersistentDataType.STRING);if(id==null)return;if(e.isRightClick())openPreview(p,id);else openCrate(p,id);}
     @EventHandler public void onClose(org.bukkit.event.inventory.InventoryCloseEvent e){views.remove(e.getPlayer().getUniqueId());pages.remove(e.getPlayer().getUniqueId());}
     private void openPreview(Player p,String id){YamlConfiguration y=crates.get(id);if(y==null)return;List<Prize> ps=prizes(y);Inventory inv=Bukkit.createInventory(null,54,Component.text(plain(y.getString("display-name",id))+" – Vorschau"));for(int i=0;i<54;i++)inv.setItem(i,item(Material.GRAY_STAINED_GLASS_PANE," ",List.of()));int slot=10;for(Prize pr:ps){if(slot>=44)break;inv.setItem(slot,pr.display);slot++;if(slot%9==8)slot+=2;}p.openInventory(inv);views.put(p.getUniqueId(),"preview");}
-    private void openCrate(Player p,String id){YamlConfiguration y=crates.get(id);if(y==null)return;int need=Math.max(1,y.getInt("required-keys",1));if(!hasKey(p,id,need)){msg(p,"<red>Du brauchst "+need+" Schlüssel für diese Kiste.");return;}takeKey(p,id,need);List<Prize> list=prizes(y);if(list.isEmpty()){msg(p,"<red>Diese Kiste enthält noch keine Preise.");return;}double total=list.stream().mapToDouble(x->Math.max(0,x.weight)).sum();if(total<=0){msg(p,"<red>Die Preisgewichte sind ungültig.");return;}double r=ThreadLocalRandom.current().nextDouble(total);Prize chosen=list.get(list.size()-1);for(Prize pr:list){r-=Math.max(0,pr.weight);if(r<=0){chosen=pr;break;}}givePrize(p,id,chosen,y);}
+    private void openCrate(Player p,String id){YamlConfiguration y=crates.get(id);if(y==null)return;int need=Math.max(1,y.getInt("required-keys",1));if(!hasKey(p,id,need)){msg(p,"<red>Du brauchst "+need+" Schlüssel für diese Kiste.");return;}List<Prize> list=prizes(y);if(list.isEmpty()){msg(p,"<red>Diese Kiste enthält noch keine Preise.");return;}double total=list.stream().mapToDouble(x->Math.max(0,x.weight)).sum();if(total<=0){msg(p,"<red>Die Preisgewichte sind ungültig.");return;}double roll=ThreadLocalRandom.current().nextDouble(total);Prize chosen=list.get(list.size()-1);for(Prize pr:list){roll-=Math.max(0,pr.weight);if(roll<=0){chosen=pr;break;}}takeKey(p,id,need);startRoulette(p,id,y,list,chosen);}
+
+    private void startRoulette(Player p,String id,YamlConfiguration y,List<Prize> prizes,Prize chosen){
+        Inventory inv=Bukkit.createInventory(null,27,Component.text("Kisten-Roulette"));
+        ItemStack filler=item(Material.GRAY_STAINED_GLASS_PANE," ",List.of());
+        for(int i=0;i<27;i++)inv.setItem(i,filler);
+        inv.setItem(4,item(Material.YELLOW_STAINED_GLASS_PANE,"<yellow>▼ GEWINN ▼",List.of()));
+        inv.setItem(22,item(Material.YELLOW_STAINED_GLASS_PANE,"<yellow>▲ GEWINN ▲",List.of()));
+        p.openInventory(inv);views.put(p.getUniqueId(),"roulette");
+        final int[] ticks={0};final int[] taskId={-1};
+        taskId[0]=Bukkit.getScheduler().runTaskTimer(this,()->{
+            if(!p.isOnline()){Bukkit.getScheduler().cancelTask(taskId[0]);return;}
+            if(ticks[0]<40){
+                for(int slot=10;slot<=16;slot++)inv.setItem(slot,prizes.get(ThreadLocalRandom.current().nextInt(prizes.size())).display.clone());
+                ticks[0]++;
+            }else{
+                Bukkit.getScheduler().cancelTask(taskId[0]);
+                inv.setItem(13,chosen.display.clone());
+                inv.setItem(4,item(Material.YELLOW_STAINED_GLASS_PANE,"<gold>▼ GEWINN ▼",List.of()));
+                inv.setItem(22,item(Material.YELLOW_STAINED_GLASS_PANE,"<gold>▲ GEWINN ▲",List.of()));
+                Bukkit.getScheduler().runTaskLater(this,()->{
+                    if(!p.isOnline())return;
+                    givePrize(p,id,chosen,y);
+                    if(p.getOpenInventory().getTopInventory().equals(inv))p.closeInventory();
+                },30L);
+            }
+        },0L,2L).getTaskId();
+    }
     private void givePrize(Player p,String id,Prize pr,YamlConfiguration y){List<ItemStack> rewards=decodeItems(pr.rawItems);if(rewards.isEmpty())rewards.add(pr.display.clone());for(ItemStack reward:rewards){Map<Integer,ItemStack> left=p.getInventory().addItem(reward);left.values().forEach(x->p.getWorld().dropItemNaturally(p.getLocation(),x));}String prize=plain(pr.name.isBlank()?pr.display.getType().name():pr.name);for(String command:y.getStringList("prize-commands"))runRewardCommand(command,p,prize);for(String command:pr.commands)runRewardCommand(command,p,prize);String message="<green>Du hast <yellow>"+prize+"</yellow> aus <light_purple>"+plain(y.getString("display-name",id))+"</light_purple> erhalten!";for(String m:y.getStringList("prize-message"))msg(p,m.replace("%reward%",prize).replace("%player%",p.getName()));if(y.getStringList("prize-message").isEmpty())msg(p,message);if(y.getBoolean("broadcast",false))for(String m:y.getStringList("broadcast-messages"))Bukkit.broadcast(MM.deserialize(m.replace("%player%",p.getName()).replace("%reward%",prize)));p.playSound(p.getLocation(),Sound.ENTITY_PLAYER_LEVELUP,1f,1f);discord(p,id,prize);}
     private void runRewardCommand(String cmd,Player p,String prize){Bukkit.dispatchCommand(Bukkit.getConsoleSender(),cmd.replace("%player%",p.getName()).replace("%reward%",prize).replace("%crate%",p.getName()));}
     private record Prize(String id,String name,double weight,ItemStack display,List<String> rawItems,List<String> commands){}
